@@ -229,7 +229,7 @@
   justify-content: flex-start;
 }
 
-.manage > :is(button, a) {
+.manageButton {
   min-block-size: auto;
   padding: 0;
   border: 0;
@@ -239,3 +239,5 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.manageButton:hover { color: var(--motion-neutral-n0); }
+.manageButton:focus-visible { outline: 2px solid var(--motion-neutral-n0); outline-offset: 2px; }
