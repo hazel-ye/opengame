@@ -72,8 +72,11 @@ it('renders curated Seedance 2.5 and GPT Image 2.6 showcase galleries with light
     await act(async () => { remix.dispatchEvent(key); });
     expect(key.defaultPrevented).toBe(false);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    cards[0].focus();
-    await act(async () => cards[0].click());
+    const openPreview = cards[0].querySelector<HTMLButtonElement>('.om-hub-showcase-open')!;
+    expect(openPreview.getAttribute('aria-label')).toBeTruthy();
+    expect(openPreview.contains(remix)).toBe(false);
+    openPreview.focus();
+    await act(async () => openPreview.click());
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
     expect(dialog?.parentElement).toBe(document.body);
     expect(dialog?.contains(document.activeElement)).toBe(true);
