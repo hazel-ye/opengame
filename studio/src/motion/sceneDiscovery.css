@@ -857,9 +857,8 @@
   background: var(--motion-video-ink);
   color: var(--motion-strong);
   text-align: start;
-  cursor: pointer;
 }
-:root[data-motion-ui][data-motion-studio] .om-hub-showcase-card:is(:hover, :focus-visible) {
+:root[data-motion-ui][data-motion-studio] .om-hub-showcase-card:is(:hover, :focus-within) {
   background-color: var(--motion-video-ink);
 }
 .om-hub-showcase-media {
@@ -867,6 +866,25 @@
   width: 100%;
   overflow: hidden;
   background: var(--motion-video-ink);
+}
+.om-hub-showcase-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+}
+.om-hub-showcase-open:focus-visible {
+  outline: 2px solid var(--motion-focus);
+  outline-offset: -2px;
+}
+.om-hub-showcase-preview {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 .om-hub-showcase-media img {
   width: 100%;
@@ -900,7 +918,7 @@
   pointer-events: none;
   transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.om-hub-showcase-card:is(:hover, :focus-visible) .om-hub-showcase-media::after {
+.om-hub-showcase-card:is(:hover, :focus-within) .om-hub-showcase-media::after {
   opacity: 1;
 }
 .om-hub-showcase-kind {
@@ -920,7 +938,7 @@
   pointer-events: none;
   transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.om-hub-showcase-card:is(:hover, :focus-visible) .om-hub-showcase-kind {
+.om-hub-showcase-card:is(:hover, :focus-within) .om-hub-showcase-kind {
   opacity: 0;
   transform: translateY(-2px);
 }
@@ -937,9 +955,10 @@
   padding: 14px 12px 12px;
   opacity: 0;
   transform: translateY(4px);
+  pointer-events: none;
   transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.om-hub-showcase-card:is(:hover, :focus-visible) .om-hub-showcase-overlay {
+.om-hub-showcase-card:is(:hover, :focus-within) .om-hub-showcase-overlay {
   opacity: 1;
   transform: translateY(0);
 }
@@ -955,6 +974,7 @@
 }
 .om-hub-showcase-cta {
   flex: none;
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   gap: 3px;

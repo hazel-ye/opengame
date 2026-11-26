@@ -187,7 +187,8 @@ export function ExploreBlackFridaySpotlight({ active, onNavigate, onOpenMotionEd
 
   // Sub-pixel 60/120fps GPU camera-dolly panning with asymmetric inertia & hydraulic end cushions
   useEffect(() => {
-    if (paused) return;
+    // Stop scheduling frames while Explore is hidden (keep-alive route, offscreen, or background tab).
+    if (paused || !active || !visible) return;
     let rafId = 0;
     let lastTime = performance.now();
 
@@ -246,7 +247,7 @@ export function ExploreBlackFridaySpotlight({ active, onNavigate, onOpenMotionEd
 
     rafId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(rafId);
-  }, [paused]);
+  }, [paused, active, visible]);
 
   const updateEdgePan = (clientX: number) => {
     const viewport = viewportRef.current;

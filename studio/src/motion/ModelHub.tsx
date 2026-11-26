@@ -419,11 +419,8 @@ export function ModelHub({ id, onExplore, onProvider, onModel, onUse, onScene, o
                     return (
                       <div
                         key={item.id}
-                        role="button"
-                        tabIndex={0}
                         className="om-hub-showcase-card"
                         data-playing={playingHoverVideo ? 'true' : undefined}
-                        aria-label={itemTitle}
                         onMouseEnter={() => setHoveredCaseId(item.id)}
                         onMouseLeave={() => setHoveredCaseId(prev => (prev === item.id ? null : prev))}
                         onFocus={() => setHoveredCaseId(item.id)}
@@ -432,37 +429,36 @@ export function ModelHub({ id, onExplore, onProvider, onModel, onUse, onScene, o
                             setHoveredCaseId(prev => (prev === item.id ? null : prev));
                           }
                         }}
-                        onClick={() => setActiveCaseId(item.id)}
-                        onKeyDown={event => {
-                          if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
-                            event.preventDefault();
-                            setActiveCaseId(item.id);
-                          }
-                        }}
                       >
                         <div className="om-hub-showcase-media" style={{ aspectRatio: String(item.aspectRatio) }}>
-                          <img src={item.poster} alt={itemTitle} loading="lazy" referrerPolicy="no-referrer" />
-                          {playingHoverVideo && item.video && (
-                            <ShowcaseHoverVideo src={item.video} poster={item.poster} />
-                          )}
-                          <span
-                            className="om-hub-showcase-kind"
-                            data-kind={isVideo ? 'video' : 'image'}
-                            title={kindLabel}
-                            aria-label={kindLabel}
+                          <Button
+                            type="button"
+                            variant="plain"
+                            className="om-hub-showcase-open"
+                            aria-label={itemTitle}
+                            onClick={() => setActiveCaseId(item.id)}
                           >
-                            <RemixIcon name={isVideo ? 'movie-line' : 'image-line'} size={11} />
-                          </span>
+                            <img src={item.poster} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                            <span
+                              className="om-hub-showcase-kind"
+                              data-kind={isVideo ? 'video' : 'image'}
+                              title={kindLabel}
+                            >
+                              <RemixIcon name={isVideo ? 'movie-line' : 'image-line'} size={11} />
+                            </span>
+                          </Button>
+                          {playingHoverVideo && item.video && (
+                            <div className="om-hub-showcase-preview" aria-hidden="true">
+                              <ShowcaseHoverVideo src={item.video} poster={item.poster} />
+                            </div>
+                          )}
                           <div className="om-hub-showcase-overlay">
-                            <strong className="om-hub-showcase-title" title={itemTitle}>{itemTitle}</strong>
+                            <strong className="om-hub-showcase-title" title={itemTitle} aria-hidden="true">{itemTitle}</strong>
                             <Button
                               type="button"
                               variant="plain"
                               className="om-hub-showcase-cta"
-                              onClick={event => {
-                                event.stopPropagation();
-                                launchShowcaseRemix(item);
-                              }}
+                              onClick={() => launchShowcaseRemix(item)}
                             >
                               <span>{t('Remix this')}</span>
                               <RemixIcon name="arrow-right-up-line" size={13} />

@@ -127,7 +127,7 @@ it('falls back from videoHd to video and then poster when non-X lightbox streams
         <ModelHub id="seedance-2-5" onExplore={() => {}} onProvider={() => {}} onModel={() => {}} onUse={() => {}} onSettings={() => {}} />
       </I18nProvider>,
     ));
-    await act(async () => container.querySelector<HTMLElement>('.om-hub-showcase-card')!.click());
+    await act(async () => container.querySelector<HTMLElement>('.om-hub-showcase-open')!.click());
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     const hdVideo = dialog.querySelector<HTMLVideoElement>('video.om-hub-lightbox-video')!;
     expect(hdVideo.getAttribute('src')).toBe('https://example.com/hd.mp4');
@@ -158,7 +158,7 @@ it('plays X-hosted Seedance showcase videos inside a no-referrer srcDoc iframe o
   ));
 
   const xCard = [...container.querySelectorAll<HTMLElement>('.om-hub-showcase-card')]
-    .find(card => card.getAttribute('aria-label') === xCase.title)!;
+    .find(card => card.querySelector('.om-hub-showcase-open')?.getAttribute('aria-label') === xCase.title)!;
   expect(xCard).toBeDefined();
   await act(async () => xCard.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })));
   const hoverIframe = xCard.querySelector<HTMLIFrameElement>('iframe.om-hub-showcase-video')!;
@@ -166,7 +166,7 @@ it('plays X-hosted Seedance showcase videos inside a no-referrer srcDoc iframe o
   expect(hoverIframe.getAttribute('srcdoc')).toContain('name="referrer" content="no-referrer"');
   expect(hoverIframe.getAttribute('srcdoc')).toContain(xCase.video!);
 
-  await act(async () => xCard.click());
+  await act(async () => xCard.querySelector<HTMLElement>('.om-hub-showcase-open')!.click());
   const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
   const lightboxIframe = dialog.querySelector<HTMLIFrameElement>('iframe.om-hub-lightbox-video')!;
   expect(lightboxIframe).not.toBeNull();
@@ -213,7 +213,7 @@ it('localizes Seedance 2.5 and GPT Image 2.6 hubs across all 10 non-English loca
       expect(container.textContent, locale).toContain(messages['Cinema & VFX']);
       expect(container.textContent, locale).toContain(messages['Fashion & Visual']);
       expect(container.textContent, locale).toContain(messages[firstSeedance.title] ?? firstSeedance.title);
-      await act(async () => container.querySelector<HTMLElement>('.om-hub-showcase-card')!.click());
+      await act(async () => container.querySelector<HTMLElement>('.om-hub-showcase-open')!.click());
       expect(document.querySelector('.om-hub-lightbox-cta')!.textContent, locale).toContain(messages['Remix this look']);
       expect(document.querySelector<HTMLTextAreaElement>('.om-hub-lightbox textarea')!.value, locale)
         .toBe(messages[firstSeedance.prompt] ?? firstSeedance.prompt);
