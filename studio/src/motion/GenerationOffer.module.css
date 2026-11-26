@@ -229,15 +229,13 @@
   justify-content: flex-start;
 }
 
-.manageButton {
+.manage .manageButton {
   min-block-size: auto;
   padding: 0;
   border: 0;
-  background: none;
   color: var(--motion-neutral-n4);
   font-size: var(--motion-text-step-10);
-  text-decoration: underline;
   text-underline-offset: 2px;
 }
-.manageButton:hover { color: var(--motion-neutral-n0); }
-.manageButton:focus-visible { outline: 2px solid var(--motion-neutral-n0); outline-offset: 2px; }
+.manage .manageButton:is(:hover, :focus-visible) { color: var(--motion-neutral-n0); }
+.manage .manageButton:focus-visible { outline: 2px solid var(--motion-neutral-n0); outline-offset: 2px; }
