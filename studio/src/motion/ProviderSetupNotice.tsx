@@ -53,6 +53,7 @@ export function GenerationUpgradeNotice({ destination, onError, onUpgrade, visit
     title={t(title)}
     details={t(details)}
     buttonLabel={t('Upgrade', undefined, 'generation offer')}
+    manage
   />;
 }
 

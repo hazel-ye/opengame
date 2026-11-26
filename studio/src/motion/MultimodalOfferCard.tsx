@@ -24,11 +24,14 @@ export function MultimodalUpgradeButton({ subscription, label, visit, onUpgrade,
   </Button>;
 }
 
-export function MultimodalUpgradeCard({ subscription, visit, title, details, buttonLabel, onUpgrade, model }: {
+export function MultimodalUpgradeCard({ subscription, visit, title, details, buttonLabel, onUpgrade, model, manage = false }: {
   subscription: ReturnType<typeof useSubscriptionOpener>; visit?: OfferVisit; title?: string; details?: string; buttonLabel?: string; model?: string; onUpgrade?: () => void;
+  /** Keeps the cancel/change entry next to the offer for accounts that already pay (for example Go). */
+  manage?: boolean;
 }) {
   const { t } = useI18n();
   return <MultimodalOfferCard kind="upgrade" visit={visit} title={title ?? t('Unlock multimodal creation')} details={details ?? t('Black Friday’s lowest prices of the year! 7 days of unlimited use')}>
     <MultimodalUpgradeButton subscription={subscription} label={buttonLabel} visit={visit} model={model} onUpgrade={onUpgrade} />
+    {manage && !subscription.link && <div className={styles.manage}>{subscription.button('manage_subscription')}</div>}
   </MultimodalOfferCard>;
 }

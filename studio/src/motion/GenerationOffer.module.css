@@ -222,3 +222,20 @@
     padding-inline: var(--motion-space-10);
   }
 }
+
+.manage {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.manage > :is(button, a) {
+  min-block-size: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--motion-neutral-n4);
+  font-size: var(--motion-text-step-10);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

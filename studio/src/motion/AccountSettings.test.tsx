@@ -248,7 +248,9 @@ it('offers Free and Go accounts an upgrade through the registered entry source, 
     expect([...guide.querySelectorAll('li')].map(item => item.textContent)).toEqual([
       'Go Max annual from $100/mo', 'Claude / GPT up to 20% off',
     ]);
-    expect(page.querySelector('.om-settings-section .om-button')).toBeNull();
+    const manage = page.querySelector('.om-settings-section .om-button');
+    if (plan === 'go') expect(manage?.textContent).toBe('Manage subscription');
+    else expect(manage).toBeNull();
     expect(page.querySelector('.om-account-summary')).toBeNull();
   }
   const paid = await open({ state: 'signed-in', user: { email: 'ada@example.test' }, plan: 'plus', balance: '12.00' }, 'en', 'subscription');
