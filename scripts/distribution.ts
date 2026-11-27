@@ -842,8 +842,6 @@ export async function distributionFiles(profile: string, include: (file: string)
         if (/^studio\/build\/editor-assets\/(?:soundtrack|score|reveal-cues|flight-effects|sfx-(?:pad|chime|success|click|whoosh|impact|riser|typing))-[\w-]+\.m4a$/.test(file)) files.push(file);
         // Vite fingerprints bundled voice audition samples used by Sound Studio Speech (Kokoro-82M Apache-2.0 and BytePlus Vivi).
         if (/^studio\/build\/editor-assets\/(?:kokoro-(?:af|am)_[a-z]+|byteplus-[a-z0-9_]+)-[\w-]+\.m4a$/.test(file)) files.push(file);
-        // Vite fingerprints the self-hosted Black Friday MAGI-2 launch modal planet loop (Magi2LaunchModal.tsx).
-        if (/^studio\/build\/editor-assets\/magi2-planet-6s-[\w-]+\.mp4$/.test(file)) files.push(file);
         if (/^studio\/(?:build|public)\//.test(file) && /\.(?:gif|mp4|webm|mov|m4v|mp3|m4a|wav|ogg|flac|aac)$/i.test(file) && !files.includes(file)) {
           throw new Error(`Unregistered Studio media: ${file}. Host optional previews and load them on demand. Add required offline media to scripts/distribution.ts with its runtime purpose.`);
         }
