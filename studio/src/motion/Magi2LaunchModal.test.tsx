@@ -1,31 +1,29 @@
 // @vitest-environment happy-dom
-import { statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { languages, type Locale } from '../i18n/manifest';
+import { I18nProvider, languages, translate, type Locale } from '../i18n/I18n';
 import {
   MAGI2_MODAL_AUDIENCE_TIMEOUT_MS,
-  MAGI2_MODAL_COPY,
-  MAGI2_MODAL_DISMISSED_KEY,
+  MAGI2_MODAL_DISMISSED_STORAGE_NAME,
   MAGI2_MODAL_SEEN_COOKIE,
+  MAGI2_MODAL_VIDEO_URL,
   buildMagi2ConsolePlanUrl,
   classifyMagi2Audience,
   isMagi2ModalOpen,
   readMagi2CountdownParts,
+  resolveMagi2ModalCopy,
   shouldSkipExploreHeroIntro,
+  type Magi2AudienceAccount,
 } from './magi2LaunchModalConfig';
 
 const mockAccountState = vi.hoisted(() => ({
-  account: null as { state: string; plan?: string; billingUnavailable?: boolean } | null,
+  account: null as Magi2AudienceAccount | null,
   error: false,
-  locale: 'zh-CN' as Locale,
 }));
 
-vi.mock('../i18n/I18n', () => ({
-  useI18n: () => ({ locale: mockAccountState.locale, t: (s: string) => s }),
-}));
 vi.mock('./AccountSettings', () => ({
   useAccountSummary: () => ({
     account: mockAccountState.account,
@@ -35,9 +33,17 @@ vi.mock('./AccountSettings', () => ({
   }),
 }));
 vi.mock('./tracking', () => ({ trackMotion: vi.fn() }));
-vi.mock('./entitlementAttribution', () => ({ useCheckoutReturnRefresh: () => vi.fn() }));
+vi.mock('./entitlementAttribution', async importOriginal => {
+  const actual = await importOriginal<typeof import('./entitlementAttribution')>();
+  return {
+    ...actual,
+    useCheckoutReturnRefresh: () => vi.fn(),
+  };
+});
 
+import { ExploreBlackFridayHero } from './ExploreBlackFridayHero';
 import { Magi2LaunchModal } from './Magi2LaunchModal';
+import { trackMotion } from './tracking';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -51,15 +57,22 @@ function clearCookies() {
   }
 }
 
+function renderWithI18n(node: React.ReactNode, locale: Locale = 'zh-CN') {
+  act(() => {
+    root.render(<I18nProvider initialLocale={locale}>{node}</I18nProvider>);
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-27T12:00:00+08:00'));
+  vi.mocked(trackMotion).mockClear();
   clearCookies();
   window.sessionStorage.clear();
   window.history.replaceState({}, '', '/');
+  delete document.documentElement.dataset.magi2ModalOpen;
   mockAccountState.account = null;
   mockAccountState.error = false;
-  mockAccountState.locale = 'zh-CN';
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -70,38 +83,62 @@ afterEach(() => {
   host.remove();
   clearCookies();
   window.sessionStorage.clear();
+  delete document.documentElement.dataset.magi2ModalOpen;
   vi.useRealTimers();
 });
 
 describe('OpenGame Magi2LaunchModal logic & assets', () => {
-  it('provides complete localized copy across all 11 supported locales', () => {
+  it('provides complete localized copy across all 11 supported locales via i18n bundles', () => {
     expect(languages).toHaveLength(11);
-    const en = MAGI2_MODAL_COPY.en;
+    const en = resolveMagi2ModalCopy('en', (msg, values, context) => translate('en', msg, values, context));
+    expect(en.eyebrow).toBe('7 Days Unlimited!');
+    expect(en.headline).toBe('First Launch · MAGI-2');
+    expect(en.cta).toBe('Start Unlimited');
+    expect(en.countdownPrefix).toBe('Ends in');
+
     for (const { locale } of languages) {
-      const copy = MAGI2_MODAL_COPY[locale];
-      expect(copy, `missing ${locale}`).toBeTruthy();
-      expect(copy.eyebrow.trim().length).toBeGreaterThan(0);
-      expect(copy.headline).toContain('MAGI-2');
-      expect(copy.description.some(s => s.strong)).toBe(true);
-      expect(copy.cta.trim().length).toBeGreaterThan(0);
-      expect(copy.countdownPrefix.trim().length).toBeGreaterThan(0);
+      const copy = resolveMagi2ModalCopy(locale, (msg, values, context) => translate(locale, msg, values, context));
+      expect(copy.eyebrow.trim().length, `empty eyebrow for ${locale}`).toBeGreaterThan(0);
+      expect(copy.headline, `missing MAGI-2 in headline for ${locale}`).toContain('MAGI-2');
+      expect(copy.description.some(s => s.strong), `missing bold segments for ${locale}`).toBe(true);
+      expect(copy.cta.trim().length, `empty cta for ${locale}`).toBeGreaterThan(0);
+      expect(copy.countdownPrefix.trim().length, `empty countdownPrefix for ${locale}`).toBeGreaterThan(0);
+      expect(copy.closeLabel.trim().length, `empty closeLabel for ${locale}`).toBeGreaterThan(0);
       if (locale !== 'en') {
         expect(copy.eyebrow).not.toBe(en.eyebrow);
         expect(copy.headline).not.toBe(en.headline);
         expect(copy.cta).not.toBe(en.cta);
       }
     }
+
+    // Verify MAGI-2 modal countdown prefix stays distinct from BlackFridayTopBanner "Ends in" in zh-CN.
+    expect(translate('zh-CN', 'Ends in')).toBe('距结束');
+    expect(translate('zh-CN', 'Ends in', undefined, 'MAGI-2 modal')).toBe('黑五限时');
   });
 
-  it('classifies guests and free users as eligible and paid/unknown users as ineligible', () => {
+  it('classifies guests and explicit free users as eligible and paid/unknown tiers as fail-closed', () => {
     expect(classifyMagi2Audience(null)).toBe('unknown');
+    expect(classifyMagi2Audience(undefined)).toBe('unknown');
     expect(classifyMagi2Audience({ state: 'signed-out' })).toBe('guest');
+    expect(classifyMagi2Audience({ state: 'reauth-required' })).toBe('unknown');
+    expect(classifyMagi2Audience({ state: 'unavailable' })).toBe('unknown');
     expect(classifyMagi2Audience({ state: 'signed-in', plan: 'free' })).toBe('free');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: '' })).toBe('free');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'plus' })).toBe('paid');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'pro_yearly' })).toBe('paid');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'team_max' })).toBe('paid');
+    expect(classifyMagi2Audience({ state: 'signed-in', plan: ' FREE ' })).toBe('free');
+
+    // Empty / missing / unknown plan fails closed as unknown.
+    expect(classifyMagi2Audience({ state: 'signed-in', plan: '' })).toBe('unknown');
+    expect(classifyMagi2Audience({ state: 'signed-in', plan: '   ' })).toBe('unknown');
+    expect(classifyMagi2Audience({ state: 'signed-in' })).toBe('unknown');
+    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'unknown' })).toBe('unknown');
+    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'UNKNOWN' })).toBe('unknown');
     expect(classifyMagi2Audience({ state: 'signed-in', plan: 'free', billingUnavailable: true })).toBe('unknown');
+
+    // All paid / non-free tiers and included media entitlement classify as paid.
+    for (const plan of ['ultra', 'team', 'enterprise', 'go_plus', 'go_pro', 'go_max', 'pro', 'max', 'plus', 'go', 'basic', 'pro_yearly', 'team_max']) {
+      expect(classifyMagi2Audience({ state: 'signed-in', plan }), `expected paid for ${plan}`).toBe('paid');
+    }
+    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'free', mediaEntitlement: 'included' })).toBe('paid');
+    expect(classifyMagi2Audience({ state: 'signed-in', mediaEntitlement: 'included' })).toBe('paid');
   });
 
   it('computes 12-hour rolling countdown with centiseconds', () => {
@@ -127,59 +164,195 @@ describe('OpenGame Magi2LaunchModal logic & assets', () => {
     expect(url.searchParams.has('redirect')).toBe(false);
   });
 
-  it('keeps self-hosted video and WebP poster strictly under the 1 MiB repository storage budget', () => {
-    const videoBytes = statSync(resolve(import.meta.dirname, './black-friday-modal/magi2-planet-6s.mp4')).size;
+  it('loads the modal video remotely over HTTPS and keeps the offline WebP poster lightweight', () => {
+    const videoUrl = new URL(MAGI2_MODAL_VIDEO_URL);
+    expect(videoUrl.protocol).toBe('https:');
+    expect(videoUrl.href).toBe('https://open-design.ai/black-friday-modal/magi2-planet-6s.mp4');
+    expect(existsSync(resolve(import.meta.dirname, './black-friday-modal/magi2-planet-6s.mp4'))).toBe(false);
+
     const posterBytes = statSync(resolve(import.meta.dirname, './black-friday-modal/magi2-planet-poster.webp')).size;
-    expect(videoBytes).toBeLessThan(1024 * 1024);
     expect(posterBytes).toBeLessThan(80 * 1024);
   });
 });
 
 describe('OpenGame Magi2LaunchModal runtime behavior', () => {
-  it('opens for guests, writes shared od_bf_magi2_modal_seen cookie, and renders console plan CTA', () => {
+  it('opens for guests, writes shared od_bf_magi2_modal_seen cookie, uses remote video URL, and renders console plan CTA', () => {
     mockAccountState.account = { state: 'signed-out' };
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
     const modal = document.querySelector('[data-testid="magi2-launch-modal"]');
     expect(modal).toBeTruthy();
     expect(document.querySelector('[data-testid="magi2-launch-modal-headline"]')?.textContent).toBe('全网首发 MAGI-2');
+    const video = document.querySelector<HTMLVideoElement>('[data-testid="magi2-launch-modal-video"]');
+    expect(video?.getAttribute('src')).toBe(MAGI2_MODAL_VIDEO_URL);
     const cta = document.querySelector<HTMLAnchorElement>('[data-testid="magi2-launch-modal-cta"]');
     expect(cta?.href).toContain('https://open-design.ai/cloud/dashboard?billing=plan');
     expect(document.cookie).toContain(`${MAGI2_MODAL_SEEN_COOKIE}=1`);
-    expect(window.sessionStorage.getItem(MAGI2_MODAL_DISMISSED_KEY)).toBe('1');
+    expect(window.sessionStorage.getItem(MAGI2_MODAL_DISMISSED_STORAGE_NAME)).toBe('1');
   });
 
-  it('never opens for paid users', () => {
-    mockAccountState.account = { state: 'signed-in', plan: 'pro' };
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
-    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
+  it('never opens for paid or unknown-plan users', () => {
+    for (const plan of ['pro', 'ultra', 'enterprise', 'unknown', '']) {
+      mockAccountState.account = { state: 'signed-in', plan };
+      renderWithI18n(<Magi2LaunchModal key={plan || 'empty'} trackingPage="explore" />);
+      expect(document.querySelector('[data-testid="magi2-launch-modal"]'), `should stay closed for "${plan}"`).toBeNull();
+    }
   });
 
   it('fails closed when account lookup exceeds the 5-second deadline', () => {
     mockAccountState.account = null;
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
     act(() => vi.advanceTimersByTime(MAGI2_MODAL_AUDIENCE_TIMEOUT_MS + 100));
     mockAccountState.account = { state: 'signed-out' };
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
     expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
   });
 
   it('suppresses duplicate popup when od_bf_magi2_modal_seen cookie exists, but ignores legacy od_bf_home_modal_seen', () => {
     document.cookie = 'od_bf_home_modal_seen=1; path=/';
     mockAccountState.account = { state: 'signed-in', plan: 'free' };
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
     expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeTruthy();
 
     act(() => root.unmount());
     root = createRoot(host);
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
     expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
   });
 
-  it('signals ExploreBlackFridayHero to skip full-screen intro and pause background motion while modal is open', () => {
-    expect(shouldSkipExploreHeroIntro()).toBe(true);
+  it('runs the 280ms exit transition on user close and unmounts immediately on external suppression', () => {
     mockAccountState.account = { state: 'signed-out' };
-    act(() => root.render(<Magi2LaunchModal trackingPage="explore" />));
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
+    act(() => vi.advanceTimersToNextFrame());
+
+    const modal = document.querySelector('[data-testid="magi2-launch-modal"]');
+    expect(modal).toBeTruthy();
+    expect(modal?.getAttribute('data-visible')).toBe('true');
+
+    const closeBtn = document.querySelector<HTMLButtonElement>('[data-testid="magi2-launch-modal-close"]')!;
+    act(() => closeBtn.click());
+
+    // Still mounted during the 280ms exit transition with data-visible="false".
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')?.getAttribute('data-visible')).toBe('false');
+    act(() => vi.advanceTimersByTime(150));
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeTruthy();
+
+    // Unmounts once the 280ms transition finishes.
+    act(() => vi.advanceTimersByTime(160));
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
+
+    // Reset fatigue and verify external suppression unmounts immediately and pauses video.
+    clearCookies();
+    window.sessionStorage.clear();
+    act(() => root.unmount());
+    root = createRoot(host);
+
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" suppressed={false} />);
+    const video = document.querySelector<HTMLVideoElement>('[data-testid="magi2-launch-modal-video"]')!;
+    const pauseSpy = vi.spyOn(video, 'pause').mockImplementation(() => {});
+
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" suppressed={true} />);
+    expect(pauseSpy).toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
+  });
+
+  it('closes via Base UI Dialog on Escape key and tracks keyboard dismissal', () => {
+    mockAccountState.account = { state: 'signed-out' };
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
+    act(() => vi.advanceTimersToNextFrame());
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeTruthy();
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')?.getAttribute('data-visible')).toBe('false');
+    expect(vi.mocked(trackMotion)).toHaveBeenCalledWith(
+      'ui_click',
+      expect.objectContaining({
+        element: 'close_banner',
+        interaction_method: 'keyboard',
+      }),
+    );
+
+    act(() => vi.advanceTimersByTime(320));
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
+  });
+
+  it('updates countdown DOM segments only when their formatted value changes', () => {
+    vi.setSystemTime(new Date('2026-11-27T12:00:05+08:00'));
+    mockAccountState.account = { state: 'signed-out' };
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
+    act(() => vi.advanceTimersToNextFrame());
+
+    const clock = document.querySelector('[data-testid="magi2-launch-modal-clock"]')!;
+    const segs = clock.querySelectorAll('span');
+    const hrsSpan = Array.from(segs).find(el => el.textContent === '05')!;
+    const msSpan = document.querySelector('[data-testid="magi2-launch-modal-ms"]')!;
+    expect(hrsSpan).toBeTruthy();
+
+    let hrsWrites = 0;
+    let msWrites = 0;
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent')!;
+    Object.defineProperty(hrsSpan, 'textContent', {
+      configurable: true,
+      get() { return descriptor.get!.call(this); },
+      set(val: string) { hrsWrites += 1; descriptor.set!.call(this, val); },
+    });
+    Object.defineProperty(msSpan, 'textContent', {
+      configurable: true,
+      get() { return descriptor.get!.call(this); },
+      set(val: string) { msWrites += 1; descriptor.set!.call(this, val); },
+    });
+
+    // Advance 200ms (5 ticks at 40ms): centiseconds change every tick, hours stay unchanged.
+    act(() => vi.advanceTimersByTime(200));
+    expect(hrsWrites).toBe(0);
+    expect(msWrites).toBeGreaterThanOrEqual(4);
+  });
+
+  it('keeps ExploreBlackFridayHero intro intact for paid/timeout users and collapses it only when the modal actually opens', () => {
+    // Before any modal opens, Hero intro is not preemptively skipped.
+    expect(shouldSkipExploreHeroIntro()).toBe(false);
+
+    // Paid user: modal stays closed and Hero renders expanded (intro intact).
+    mockAccountState.account = { state: 'signed-in', plan: 'ultra' };
+    renderWithI18n(
+      <>
+        <ExploreBlackFridayHero />
+        <Magi2LaunchModal trackingPage="explore" />
+      </>,
+    );
+    const paidHero = host.querySelector('section[data-bf-hero]')!;
+    expect(paidHero.getAttribute('data-collapsed')).toBe('false');
+    expect(isMagi2ModalOpen()).toBe(false);
+
+    // Timeout user: Hero remains expanded when account never resolves within 5s.
+    act(() => root.unmount());
+    root = createRoot(host);
+    mockAccountState.account = null;
+    renderWithI18n(
+      <>
+        <ExploreBlackFridayHero />
+        <Magi2LaunchModal trackingPage="explore" />
+      </>,
+    );
+    const timeoutHero = host.querySelector('section[data-bf-hero]')!;
+    expect(timeoutHero.getAttribute('data-collapsed')).toBe('false');
+    expect(isMagi2ModalOpen()).toBe(false);
+
+    // Eligible guest: when modal actually opens, MAGI2_MODAL_OPEN_EVENT collapses the Hero.
+    act(() => root.unmount());
+    root = createRoot(host);
+    mockAccountState.account = { state: 'signed-out' };
+    renderWithI18n(
+      <>
+        <ExploreBlackFridayHero />
+        <Magi2LaunchModal trackingPage="explore" />
+      </>,
+    );
+    const guestHero = host.querySelector('section[data-bf-hero]')!;
     expect(isMagi2ModalOpen()).toBe(true);
+    expect(shouldSkipExploreHeroIntro()).toBe(true);
+    expect(guestHero.getAttribute('data-collapsed')).toBe('true');
 
     const closeBtn = document.querySelector<HTMLButtonElement>('[data-testid="magi2-launch-modal-close"]')!;
     act(() => closeBtn.click());

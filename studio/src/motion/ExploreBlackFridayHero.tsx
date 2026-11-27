@@ -151,14 +151,19 @@ export function ExploreBlackFridayHero({ active = true, onExpire }: { active?: b
   );
 
   useEffect(() => {
-    const onModalChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ open?: boolean }>).detail;
-      const open = typeof detail?.open === 'boolean' ? detail.open : isMagi2ModalOpen();
+    const syncModalOpen = (open: boolean) => {
       setMagi2ModalOpen(open);
       if (open) {
         introStartRef.current = (typeof performance !== 'undefined' ? performance.now() : 0) - 10_000;
+        collapseStartedAtRef.current = -10_000;
         setCollapsed(true);
       }
+    };
+    if (isMagi2ModalOpen()) syncModalOpen(true);
+    const onModalChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ open?: boolean }>).detail;
+      const open = typeof detail?.open === 'boolean' ? detail.open : isMagi2ModalOpen();
+      syncModalOpen(open);
     };
     window.addEventListener(MAGI2_MODAL_OPEN_EVENT, onModalChange);
     return () => window.removeEventListener(MAGI2_MODAL_OPEN_EVENT, onModalChange);
