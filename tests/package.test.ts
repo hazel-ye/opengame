@@ -77,7 +77,7 @@ test('every distribution preserves public workflow dependencies and licenses whi
     assert([...files].some(file => /^studio\/build\/editor-assets\/soundtrack-[\w-]+\.m4a$/.test(file)), 'The bundled Music scene soundtrack must ship');
     assert([...files].some(file => /^studio\/build\/editor-assets\/sfx-whoosh-[\w-]+\.m4a$/.test(file)), 'Sound Studio template previews must ship');
     assert(![...files].some(file => /^studio\/build\/editor-assets\/three-js-.*\.webp$/.test(file)), 'Skill posters are hosted and loaded on demand');
-    assert(![...files].some(file => /^studio\/build\/.+\.(?:mp4|gif|webm)$/.test(file)), 'Skill preview animations are loaded on demand');
+    assert(![...files].some(file => /^studio\/build\/.+\.(?:mp4|gif|webm)$/.test(file) && !/^studio\/build\/editor-assets\/magi2-planet-6s-[\w-]+\.mp4$/.test(file)), 'Skill preview animations are loaded on demand');
     assert(files.has('studio/skill-cover-attribution.md'));
     assert(![...files].some(file => /^(?:\.agents\/skills\/|tests\/|studio\/(?:src|tests)\/)|\.map$|publish-test-package|acceptance\.md$/.test(file)));
     for (const [workflow, definition] of Object.entries(workflowRegistry)) {

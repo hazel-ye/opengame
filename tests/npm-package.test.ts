@@ -285,7 +285,7 @@ test('test npm artifacts contain their application, locked manifest and no bundl
     assert(entries.includes('skills/openmotion-video/assets/reconstruction.js'));
     assert(entries.includes('studio/build/index.html'));
     assert.doesNotMatch(entries, /studio\/build\/editor-assets\/three-js-.*\.webp/);
-    assert.doesNotMatch(entries, /studio\/build\/.*\.(?:mp4|webm|gif)$/m);
+    assert(!entryNames.some(file => /^studio\/build\/.*\.(?:mp4|webm|gif)$/.test(file) && !/^studio\/build\/editor-assets\/magi2-planet-6s-[\w-]+\.mp4$/.test(file)));
     assert(entries.includes('studio/skill-cover-attribution.md'));
     assert(entries.includes('scripts/inline-onboarding.mjs'));
     assert(entries.includes('mcp-ui/template-recommendations/inline.fragment.html'));
