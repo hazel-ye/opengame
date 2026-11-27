@@ -4,23 +4,25 @@ import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AccountSummary } from '../../../shared/provider-directory';
 import { I18nProvider, languages, translate, type Locale } from '../i18n/I18n';
 import {
-  MAGI2_MODAL_AUDIENCE_TIMEOUT_MS,
   MAGI2_MODAL_DISMISSED_STORAGE_NAME,
   MAGI2_MODAL_SEEN_COOKIE,
   MAGI2_MODAL_VIDEO_URL,
   buildMagi2ConsolePlanUrl,
-  classifyMagi2Audience,
   isMagi2ModalOpen,
   readMagi2CountdownParts,
   resolveMagi2ModalCopy,
   shouldSkipExploreHeroIntro,
-  type Magi2AudienceAccount,
 } from './magi2LaunchModalConfig';
 
+type TestAccount = Pick<AccountSummary, 'state' | 'plan' | 'billingUnavailable'> & {
+  mediaEntitlement?: 'included' | 'not-included' | 'unknown';
+};
+
 const mockAccountState = vi.hoisted(() => ({
-  account: null as Magi2AudienceAccount | null,
+  account: null as TestAccount | null,
   error: false,
 }));
 
@@ -116,31 +118,6 @@ describe('OpenGame Magi2LaunchModal logic & assets', () => {
     expect(translate('zh-CN', 'Ends in', undefined, 'MAGI-2 modal')).toBe('黑五限时');
   });
 
-  it('classifies guests and explicit free users as eligible and paid/unknown tiers as fail-closed', () => {
-    expect(classifyMagi2Audience(null)).toBe('unknown');
-    expect(classifyMagi2Audience(undefined)).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-out' })).toBe('guest');
-    expect(classifyMagi2Audience({ state: 'reauth-required' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'unavailable' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'free' })).toBe('free');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: ' FREE ' })).toBe('free');
-
-    // Empty / missing / unknown plan fails closed as unknown.
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: '' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: '   ' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-in' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'unknown' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'UNKNOWN' })).toBe('unknown');
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'free', billingUnavailable: true })).toBe('unknown');
-
-    // All paid / non-free tiers and included media entitlement classify as paid.
-    for (const plan of ['ultra', 'team', 'enterprise', 'go_plus', 'go_pro', 'go_max', 'pro', 'max', 'plus', 'go', 'basic', 'pro_yearly', 'team_max']) {
-      expect(classifyMagi2Audience({ state: 'signed-in', plan }), `expected paid for ${plan}`).toBe('paid');
-    }
-    expect(classifyMagi2Audience({ state: 'signed-in', plan: 'free', mediaEntitlement: 'included' })).toBe('paid');
-    expect(classifyMagi2Audience({ state: 'signed-in', mediaEntitlement: 'included' })).toBe('paid');
-  });
-
   it('computes 12-hour rolling countdown with centiseconds', () => {
     expect(readMagi2CountdownParts(Date.parse('2026-11-21T18:00:00.250+08:00'), false)).toEqual([11, 59, 59, 75]);
   });
@@ -190,21 +167,56 @@ describe('OpenGame Magi2LaunchModal runtime behavior', () => {
     expect(window.sessionStorage.getItem(MAGI2_MODAL_DISMISSED_STORAGE_NAME)).toBe('1');
   });
 
-  it('never opens for paid or unknown-plan users', () => {
-    for (const plan of ['pro', 'ultra', 'enterprise', 'unknown', '']) {
-      mockAccountState.account = { state: 'signed-in', plan };
-      renderWithI18n(<Magi2LaunchModal key={plan || 'empty'} trackingPage="explore" />);
-      expect(document.querySelector('[data-testid="magi2-launch-modal"]'), `should stay closed for "${plan}"`).toBeNull();
+  it('opens for ALL user plans and account states without gating on tier or billing availability', () => {
+    const scenarios: Array<{ label: string; account: TestAccount | null; error?: boolean }> = [
+      { label: 'signed-out', account: { state: 'signed-out' } },
+      { label: 'free', account: { state: 'signed-in', plan: 'free' } },
+      { label: 'go', account: { state: 'signed-in', plan: 'go' } },
+      { label: 'go_plus', account: { state: 'signed-in', plan: 'go_plus' } },
+      { label: 'pro', account: { state: 'signed-in', plan: 'pro' } },
+      { label: 'max', account: { state: 'signed-in', plan: 'max' } },
+      { label: 'ultra', account: { state: 'signed-in', plan: 'ultra' } },
+      { label: 'team', account: { state: 'signed-in', plan: 'team' } },
+      { label: 'enterprise', account: { state: 'signed-in', plan: 'enterprise' } },
+      { label: 'mediaEntitlement: included', account: { state: 'signed-in', plan: 'free', mediaEntitlement: 'included' } },
+      { label: 'billingUnavailable: true', account: { state: 'signed-in', plan: 'pro', billingUnavailable: true } },
+      { label: 'account: null (loading/unknown)', account: null },
+      { label: 'account lookup error', account: null, error: true },
+    ];
+
+    for (const scenario of scenarios) {
+      clearCookies();
+      window.sessionStorage.clear();
+      act(() => root.unmount());
+      root = createRoot(host);
+
+      mockAccountState.account = scenario.account;
+      mockAccountState.error = Boolean(scenario.error);
+      renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
+
+      expect(
+        document.querySelector('[data-testid="magi2-launch-modal"]'),
+        `expected modal to open for ${scenario.label}`,
+      ).toBeTruthy();
+      expect(document.cookie).toContain(`${MAGI2_MODAL_SEEN_COOKIE}=1`);
     }
   });
 
-  it('fails closed when account lookup exceeds the 5-second deadline', () => {
-    mockAccountState.account = null;
-    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
-    act(() => vi.advanceTimersByTime(MAGI2_MODAL_AUDIENCE_TIMEOUT_MS + 100));
-    mockAccountState.account = { state: 'signed-out' };
+  it('stays closed outside the campaign window unless ?bf_modal_preview=1 forces preview', () => {
+    vi.setSystemTime(new Date('2026-12-06T12:00:00+08:00'));
     renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
     expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeNull();
+
+    // Force preview bypasses both campaign window and session dedup.
+    document.cookie = `${MAGI2_MODAL_SEEN_COOKIE}=1; path=/`;
+    window.sessionStorage.setItem(MAGI2_MODAL_DISMISSED_STORAGE_NAME, '1');
+    window.history.replaceState({}, '', '/?bf_modal_preview=1');
+    act(() => root.unmount());
+    root = createRoot(host);
+
+    renderWithI18n(<Magi2LaunchModal trackingPage="explore" />);
+    act(() => vi.advanceTimersByTime(150));
+    expect(document.querySelector('[data-testid="magi2-launch-modal"]')).toBeTruthy();
   });
 
   it('suppresses duplicate popup when od_bf_magi2_modal_seen cookie exists, but ignores legacy od_bf_home_modal_seen', () => {
@@ -309,11 +321,40 @@ describe('OpenGame Magi2LaunchModal runtime behavior', () => {
     expect(msWrites).toBeGreaterThanOrEqual(4);
   });
 
-  it('keeps ExploreBlackFridayHero intro intact for paid/timeout users and collapses it only when the modal actually opens', () => {
+  it('keeps ExploreBlackFridayHero intro intact when modal is suppressed/seen and collapses/resumes it when modal opens/closes', () => {
     // Before any modal opens, Hero intro is not preemptively skipped.
     expect(shouldSkipExploreHeroIntro()).toBe(false);
 
-    // Paid user: modal stays closed and Hero renders expanded (intro intact).
+    // Externally suppressed host: modal stays closed and Hero renders expanded (intro intact).
+    renderWithI18n(
+      <>
+        <ExploreBlackFridayHero />
+        <Magi2LaunchModal trackingPage="explore" suppressed={true} />
+      </>,
+    );
+    const suppressedHero = host.querySelector('section[data-bf-hero]')!;
+    expect(suppressedHero.getAttribute('data-collapsed')).toBe('false');
+    expect(isMagi2ModalOpen()).toBe(false);
+
+    // Already seen in session: modal stays closed and Hero remains expanded.
+    act(() => root.unmount());
+    root = createRoot(host);
+    document.cookie = `${MAGI2_MODAL_SEEN_COOKIE}=1; path=/`;
+    renderWithI18n(
+      <>
+        <ExploreBlackFridayHero />
+        <Magi2LaunchModal trackingPage="explore" />
+      </>,
+    );
+    const seenHero = host.querySelector('section[data-bf-hero]')!;
+    expect(seenHero.getAttribute('data-collapsed')).toBe('false');
+    expect(isMagi2ModalOpen()).toBe(false);
+
+    // Fresh session (even for a paid plan): modal opens and MAGI2_MODAL_OPEN_EVENT collapses the Hero.
+    clearCookies();
+    window.sessionStorage.clear();
+    act(() => root.unmount());
+    root = createRoot(host);
     mockAccountState.account = { state: 'signed-in', plan: 'ultra' };
     renderWithI18n(
       <>
@@ -321,38 +362,10 @@ describe('OpenGame Magi2LaunchModal runtime behavior', () => {
         <Magi2LaunchModal trackingPage="explore" />
       </>,
     );
-    const paidHero = host.querySelector('section[data-bf-hero]')!;
-    expect(paidHero.getAttribute('data-collapsed')).toBe('false');
-    expect(isMagi2ModalOpen()).toBe(false);
-
-    // Timeout user: Hero remains expanded when account never resolves within 5s.
-    act(() => root.unmount());
-    root = createRoot(host);
-    mockAccountState.account = null;
-    renderWithI18n(
-      <>
-        <ExploreBlackFridayHero />
-        <Magi2LaunchModal trackingPage="explore" />
-      </>,
-    );
-    const timeoutHero = host.querySelector('section[data-bf-hero]')!;
-    expect(timeoutHero.getAttribute('data-collapsed')).toBe('false');
-    expect(isMagi2ModalOpen()).toBe(false);
-
-    // Eligible guest: when modal actually opens, MAGI2_MODAL_OPEN_EVENT collapses the Hero.
-    act(() => root.unmount());
-    root = createRoot(host);
-    mockAccountState.account = { state: 'signed-out' };
-    renderWithI18n(
-      <>
-        <ExploreBlackFridayHero />
-        <Magi2LaunchModal trackingPage="explore" />
-      </>,
-    );
-    const guestHero = host.querySelector('section[data-bf-hero]')!;
+    const activeHero = host.querySelector('section[data-bf-hero]')!;
     expect(isMagi2ModalOpen()).toBe(true);
     expect(shouldSkipExploreHeroIntro()).toBe(true);
-    expect(guestHero.getAttribute('data-collapsed')).toBe('true');
+    expect(activeHero.getAttribute('data-collapsed')).toBe('true');
 
     const closeBtn = document.querySelector<HTMLButtonElement>('[data-testid="magi2-launch-modal-close"]')!;
     act(() => closeBtn.click());

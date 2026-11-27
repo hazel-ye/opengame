@@ -1,4 +1,3 @@
-import type { AccountSummary } from '../../../shared/provider-directory';
 import { attributedEntryId, buildPlacementId, currentProductId } from '../../../shared/product-identity';
 import type { Locale, Translate } from '../i18n/I18n';
 import {
@@ -8,14 +7,12 @@ import {
   COUNTDOWN_CYCLE_SECONDS,
   blackFridayActive,
 } from './campaignAttribution';
-import { readAccountPlan } from './entitlementAttribution';
 
 export const MAGI2_MODAL_CAMPAIGN_ID = BLACK_FRIDAY_CAMPAIGN;
 export const MAGI2_MODAL_SEEN_COOKIE = 'od_bf_magi2_modal_seen';
 export const MAGI2_MODAL_SEEN_PARAM = 'od_bf_seen';
 export const MAGI2_MODAL_DISMISSED_STORAGE_NAME = 'od_bf_magi2_modal_seen';
 export const MAGI2_MODAL_OPEN_EVENT = 'om:magi2-modal-change';
-export const MAGI2_MODAL_AUDIENCE_TIMEOUT_MS = 5000;
 export const MAGI2_MODAL_VIDEO_URL = 'https://open-design.ai/black-friday-modal/magi2-planet-6s.mp4';
 export const DEFAULT_CONSOLE_PLAN_URL = 'https://open-design.ai/cloud/dashboard?billing=plan';
 
@@ -86,27 +83,6 @@ export function resolveMagi2ModalCopy(locale: Locale, t: Translate): Magi2ModalC
     countdownPrefix: t('Ends in', undefined, 'MAGI-2 modal'),
     closeLabel: t('Close MAGI-2 launch popup'),
   };
-}
-
-export type Magi2AudienceStatus = 'guest' | 'free' | 'paid' | 'unknown';
-
-export type Magi2AudienceAccount = Pick<AccountSummary, 'state' | 'plan' | 'billingUnavailable'> & {
-  mediaEntitlement?: 'included' | 'not-included' | 'unknown';
-};
-
-/** Classify account eligibility: guests and explicit free users are eligible; paid or unknown fail closed. */
-export function classifyMagi2Audience(
-  account: Magi2AudienceAccount | null | undefined,
-): Magi2AudienceStatus {
-  if (!account) return 'unknown';
-  if (account.state === 'signed-out') return 'guest';
-  if (account.state !== 'signed-in') return 'unknown';
-  if (account.billingUnavailable) return 'unknown';
-  if (account.mediaEntitlement === 'included') return 'paid';
-  const plan = readAccountPlan(account);
-  if (!plan || plan === 'unknown') return 'unknown';
-  if (plan === 'free') return 'free';
-  return 'paid';
 }
 
 export function isMagi2PreviewForced(search?: string): boolean {
@@ -208,7 +184,8 @@ export function setMagi2ModalOpenSignal(open: boolean): void {
 /**
  * Only skip the Explore Black Friday Hero intro when the MAGI-2 modal is already open
  * or explicitly preview-forced; otherwise let the Hero play and collapse via MAGI2_MODAL_OPEN_EVENT
- * if/when the modal actually opens so paid and timeout users never lose the Hero intro.
+ * if/when the modal actually opens so already-dismissed sessions and externally suppressed hosts
+ * keep the Hero intro intact.
  */
 export function shouldSkipExploreHeroIntro(): boolean {
   return isMagi2ModalOpen() || isMagi2PreviewForced();

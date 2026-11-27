@@ -75,9 +75,7 @@ export function resolveSettingsAttribution(attribution: EntryAttribution): Entry
 }
 
 /** Normalized plan name only when the account is signed in and billing data is readable. */
-export function readAccountPlan(
-  summary: Pick<AccountSummary, 'state' | 'plan' | 'billingUnavailable'> | null | undefined,
-): string | undefined {
+export function readAccountPlan(summary: AccountSummary | null | undefined): string | undefined {
   return summary?.state === 'signed-in' && !summary.billingUnavailable
     ? summary.plan?.trim().toLowerCase() || undefined
     : undefined;

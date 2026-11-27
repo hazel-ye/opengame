@@ -2,17 +2,14 @@ import { Fragment, useCallback, useEffect, useRef, useState, type MouseEvent } f
 import { Dialog } from '@base-ui/react/dialog';
 import { Button } from 'open-design-ui/button';
 import { useI18n } from '../i18n/I18n';
-import { useAccountSummary } from './AccountSettings';
 import magi2PosterUrl from './black-friday-modal/magi2-planet-poster.webp';
 import { blackFridayActive, newCampaignEntryId, pricingLinkTargetProps } from './campaignAttribution';
 import { useCheckoutReturnRefresh } from './entitlementAttribution';
 import type { CreativePage } from './exploreTracking';
 import {
-  MAGI2_MODAL_AUDIENCE_TIMEOUT_MS,
   MAGI2_MODAL_CAMPAIGN_ID,
   MAGI2_MODAL_VIDEO_URL,
   buildMagi2ConsolePlanUrl,
-  classifyMagi2Audience,
   isMagi2PreviewForced,
   isMagi2SuppressedByFatigue,
   markMagi2ModalSeen,
@@ -46,11 +43,9 @@ export function Magi2LaunchModal({
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [entryId, setEntryId] = useState(newCampaignEntryId);
-  const [audienceTimedOut, setAudienceTimedOut] = useState(false);
 
   const externallySuppressed = suppressed || (!forcePreview && !blackFridayActive());
-  const canCheckAudience = !dismissed && !externallySuppressed;
-  const { account, error } = useAccountSummary({ eager: canCheckAudience && !forcePreview });
+  const canOpen = !dismissed && !externallySuppressed;
   const markCheckoutReturn = useCheckoutReturnRefresh(trackingPage, 'bf_banner');
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -62,18 +57,6 @@ export function Magi2LaunchModal({
   const closingRef = useRef(false);
   const settledRef = useRef(false);
   const initialCountdownRef = useRef<readonly [number, number, number, number] | null>(null);
-
-  // Enforce the shared 5-second fail-closed audience deadline.
-  useEffect(() => {
-    if (!canCheckAudience || forcePreview || settledRef.current) return;
-    const timer = window.setTimeout(() => {
-      if (!settledRef.current) {
-        settledRef.current = true;
-        setAudienceTimedOut(true);
-      }
-    }, MAGI2_MODAL_AUDIENCE_TIMEOUT_MS);
-    return () => window.clearTimeout(timer);
-  }, [canCheckAudience, forcePreview]);
 
   const unmountImmediately = useCallback(() => {
     if (closeTimerRef.current !== null) {
@@ -132,9 +115,9 @@ export function Magi2LaunchModal({
     }
   }, [externallySuppressed, mounted, unmountImmediately]);
 
-  // Decide eligibility once account resolves within the 5s window (or immediately when preview is forced).
+  // Open for all users whenever the campaign is active (or preview-forced), not suppressed, and not yet seen in this session.
   useEffect(() => {
-    if (!canCheckAudience) return;
+    if (!canOpen) return;
 
     if (forcePreview) {
       if (mounted) return;
@@ -146,19 +129,7 @@ export function Magi2LaunchModal({
       return () => window.clearTimeout(timer);
     }
 
-    if (audienceTimedOut || error) {
-      settledRef.current = true;
-      return;
-    }
-
-    const status = classifyMagi2Audience(account);
-    if (status === 'paid') {
-      settledRef.current = true;
-      if (mounted) unmountImmediately();
-      return;
-    }
-
-    if ((status === 'guest' || status === 'free') && !settledRef.current) {
+    if (!settledRef.current) {
       settledRef.current = true;
       closingRef.current = false;
       markMagi2ModalSeen();
@@ -171,7 +142,7 @@ export function Magi2LaunchModal({
         hook_id: 'bf_banner',
       });
     }
-  }, [account, audienceTimedOut, canCheckAudience, error, forcePreview, mounted, trackingPage, unmountImmediately]);
+  }, [canOpen, forcePreview, mounted, trackingPage]);
 
   useEffect(() => {
     setMagi2ModalOpenSignal(mounted);
